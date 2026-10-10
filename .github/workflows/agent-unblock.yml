@@ -1,0 +1,134 @@
+# Dependency scheduler (docs/process.md, 階段 3 → 4). No agent runs here.
+# Adds `ready` to queued tickets whose 「依賴」 issues are all done, keeping at most
+# AGENT_MAX_PARALLEL tickets in flight. Runs as the author App, because labels added
+# with GITHUB_TOKEN do not trigger Agent · Implement.
+# - Opt-in: only open issues labeled `queued`, added by an AGENT_TRIGGER_ACTORS account
+#   (the Architect adds it to a batch after the human spot-check, gate G3).
+# - Done = issue closed as completed, or a merged PR.
+# Setup: docs/agent-ci.md
+name: Agent · Unblock
+
+on:
+  issues:
+    types: [closed, labeled, unlabeled]
+  schedule:
+    # Backstop in case an event was missed.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only report what would be labeled
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One scheduler at a time; each run recomputes everything, so a newer pending run
+# replacing an older one loses nothing.
+concurrency:
+  group: agent-unblock
+  cancel-in-progress: false
+
+jobs:
+  unblock:
+    if: >-
+      github.event_name != 'issues'
+      || github.event.action == 'closed'
+      || (github.event.action == 'labeled' && github.event.label.name == 'queued')
+      || contains(fromJSON('["blocked","needs-human","needs-spec","needs-design"]'), github.event.label.name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@v2.22.1
+        with:
+          egress-policy: audit
+
+      - name: Mint author App token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ secrets.AGENT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Add ready to unblocked tickets
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TRUSTED: ${{ vars.AGENT_TRIGGER_ACTORS }}
+          MAX_PARALLEL: ${{ vars.AGENT_MAX_PARALLEL || '3' }}
+          DRY_RUN: ${{ inputs.dry-run && '1' || '0' }}
+          QUEUE_LABEL: queued
+        run: |
+          set -euo pipefail
+          summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+          state_labels='["ready","in-progress","in-review","changes-requested","blocked","needs-spec","needs-design","needs-human"]'
+          stuck_labels='["blocked","needs-spec","needs-design","needs-human"]'
+
+          # In flight: ready → in-progress → in-review / changes-requested, unless escalated.
+          inflight=$(gh issue list --repo "$REPO" --state open --limit 500 --json number,labels --jq "
+            [.[] | (.labels | map(.name)) as \$l
+              | select(any(\$l[]; IN(\"ready\",\"in-progress\",\"in-review\",\"changes-requested\")))
+              | select(all(\$l[]; IN($stuck_labels[]) | not))] | length")
+          slots=$(( MAX_PARALLEL - inflight ))
+          {
+            echo "## Agent · Unblock"
+            echo
+            echo "In flight: ${inflight} / ${MAX_PARALLEL}$([[ $DRY_RUN == 1 ]] && echo '（dry run）')"
+            echo
+            echo "| Issue | 結果 |"
+            echo "| --- | --- |"
+          } >> "$summary"
+
+          # Queued tickets with no state label yet, oldest first (creation order is the
+          # Architect's topological order).
+          candidates=$(gh issue list --repo "$REPO" --state open --label "$QUEUE_LABEL" --limit 500 \
+            --json number,labels --jq "
+              [.[] | select(all(.labels[].name; IN($state_labels[]) | not)) | .number] | sort | .[]")
+
+          is_done() {
+            local info state reason merged
+            info=$(gh api "repos/$REPO/issues/$1" \
+              --jq '[.state, (.state_reason // "-"), (.pull_request.merged_at // "-")] | @tsv') || return 1
+            IFS=$'\t' read -r state reason merged <<< "$info"
+            [[ "$merged" != "-" ]] && return 0
+            [[ "$state" == "closed" && "$reason" == "completed" ]]
+          }
+
+          for n in $candidates; do
+            # Only a trusted account may queue a ticket; otherwise queuing would bypass
+            # the AGENT_TRIGGER_ACTORS check in Agent · Implement.
+            queued_by=$(gh api "repos/$REPO/issues/$n/events" --paginate \
+              --jq ".[] | select(.event == \"labeled\" and .label.name == \"$QUEUE_LABEL\") | .actor.login" | tail -n 1)
+            if [[ ",${TRUSTED}," != *",${queued_by},"* ]]; then
+              echo "| #$n | 略過：\`$QUEUE_LABEL\` 由不受信任的帳號 \`${queued_by:-?}\` 加上 |" >> "$summary"
+              continue
+            fi
+
+            body=$(gh issue view "$n" --repo "$REPO" --json body --jq .body)
+            deps=$(printf '%s\n' "$body" | awk '/^## /{f = ($0 ~ /^## 依賴/)} f' \
+              | grep -oE '#[0-9]+' | tr -d '#' | grep -vx "$n" | sort -un || true)
+            waiting=()
+            for d in $deps; do is_done "$d" || waiting+=("#$d"); done
+            if (( ${#waiting[@]} > 0 )); then
+              echo "| #$n | 等待 ${waiting[*]} |" >> "$summary"
+              continue
+            fi
+            if (( slots <= 0 )); then
+              echo "| #$n | 依賴已完成，等待空位 |" >> "$summary"
+              continue
+            fi
+
+            dep_list=$(printf '#%s ' $deps)
+            if [[ "$DRY_RUN" == 1 ]]; then
+              echo "| #$n | 會加上 \`ready\` |" >> "$summary"
+            else
+              gh issue edit "$n" --repo "$REPO" --add-label ready --remove-label "$QUEUE_LABEL" > /dev/null
+              gh issue comment "$n" --repo "$REPO" --body \
+                "依賴${deps:+（${dep_list% }）}已全部完成，由 Agent · Unblock 加上 \`ready\`。" > /dev/null
+              echo "| #$n | 已加上 \`ready\` |" >> "$summary"
+            fi
+            slots=$(( slots - 1 ))
+          done

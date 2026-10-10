@@ -63,6 +63,10 @@ jobs:
           QUEUE_LABEL: queued
         run: |
           set -euo pipefail
+          if [[ -z "$TRUSTED" ]]; then
+            echo "::error::AGENT_TRIGGER_ACTORS is not set; refusing to add ready."
+            exit 1
+          fi
           summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
           state_labels='["ready","in-progress","in-review","changes-requested","blocked","needs-spec","needs-design","needs-human"]'
           stuck_labels='["blocked","needs-spec","needs-design","needs-human"]'
@@ -102,7 +106,8 @@ jobs:
             # the AGENT_TRIGGER_ACTORS check in Agent · Implement.
             queued_by=$(gh api "repos/$REPO/issues/$n/events" --paginate \
               --jq ".[] | select(.event == \"labeled\" and .label.name == \"$QUEUE_LABEL\") | .actor.login" | tail -n 1)
-            if [[ ",${TRUSTED}," != *",${queued_by},"* ]]; then
+            # Fail closed: an unknown actor is never trusted.
+            if [[ -z "$queued_by" || ",${TRUSTED}," != *",${queued_by},"* ]]; then
               echo "| #$n | 略過：\`$QUEUE_LABEL\` 由不受信任的帳號 \`${queued_by:-?}\` 加上 |" >> "$summary"
               continue
             fi

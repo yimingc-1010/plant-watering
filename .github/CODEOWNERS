@@ -14,3 +14,9 @@
 
 # Platform: mobile
 /apps/mobile/eas.json    @yimingc-1010
+
+# Human gates 1-2 (docs/process.md): PRD, design and ADRs need a human approval,
+# so a reviewer-bot approval alone cannot auto-merge them.
+/docs/prd.md             @yimingc-1010
+/docs/design/            @yimingc-1010
+/docs/adr/               @yimingc-1010

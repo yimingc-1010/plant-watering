@@ -1,5 +1,5 @@
 {
-  "name": "mobile-agent-template",
+  "name": "plant-watering",
   "private": true,
   "workspaces": [
     "apps/*",

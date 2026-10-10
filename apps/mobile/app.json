@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "App Template",
-    "slug": "app-template",
-    "scheme": "apptemplate",
+    "name": "Plant Watering",
+    "slug": "plant-watering",
+    "scheme": "plantwatering",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "bundleIdentifier": "com.example.apptemplate",
+      "bundleIdentifier": "io.github.yimingc1010.plantwatering",
       "supportsTablet": false
     },
     "android": {
-      "package": "com.example.apptemplate",
+      "package": "io.github.yimingc1010.plantwatering",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

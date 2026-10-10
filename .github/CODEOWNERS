@@ -1,16 +1,16 @@
 # Paths that define the process, its gates and agent permissions.
 # Changes require review from a human code owner (enable "Require review from Code Owners"
-# in the main branch protection rule). Replace @OWNER with your GitHub username or team.
+# in the main branch protection rule). Owner: @yimingc-1010.
 
 # Base (agent-template-base)
-/.github/workflows/      @OWNER
-/.github/actions/        @OWNER
-/.github/CODEOWNERS      @OWNER
-/.claude/                @OWNER
-/CLAUDE.md               @OWNER
-/docs/process.md         @OWNER
-/docs/platform.md        @OWNER
-/docs/template.md        @OWNER
+/.github/workflows/      @yimingc-1010
+/.github/actions/        @yimingc-1010
+/.github/CODEOWNERS      @yimingc-1010
+/.claude/                @yimingc-1010
+/CLAUDE.md               @yimingc-1010
+/docs/process.md         @yimingc-1010
+/docs/platform.md        @yimingc-1010
+/docs/template.md        @yimingc-1010
 
 # Platform: mobile
-/apps/mobile/eas.json    @OWNER
+/apps/mobile/eas.json    @yimingc-1010

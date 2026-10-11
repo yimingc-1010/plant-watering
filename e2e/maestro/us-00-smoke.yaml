@@ -1,11 +1,13 @@
-# US-00 smoke: the app launches and shows the home screen.
+# US-00 smoke: the app launches on the today tab (US-03 AC 1) and the plants tab shows the version.
 # File names map to user story ids (us-<NN>-<slug>.yaml) for requirement coverage.
 appId: io.github.yimingc1010.plantwatering
 ---
 - launchApp:
     clearState: true
 - assertVisible:
-    id: home-title
+    id: today-screen
+- tapOn:
+    id: tab-plants
 - assertVisible:
     id: app-version
-- takeScreenshot: us-00-home
+- takeScreenshot: us-00-plants

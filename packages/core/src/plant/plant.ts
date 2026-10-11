@@ -1,4 +1,4 @@
-import type { LocalDate } from '../date/local-date';
+import { addDays, daysBetween, type LocalDate } from '../date/local-date';
 
 /**
  * `p<n>` (e.g. `p1`), issued from `Garden.nextId` and never reused after a
@@ -17,4 +17,19 @@ export interface Plant {
   /** Integer in `INTERVAL_MIN`–`INTERVAL_MAX`. */
   intervalDays: number;
   lastWateredOn: LocalDate;
+}
+
+/** `lastWateredOn + intervalDays`: the PRD's 到期日／下次澆水日. */
+export function nextWateringOn(plant: Plant): LocalDate {
+  return addDays(plant.lastWateredOn, plant.intervalDays);
+}
+
+/** Days past `nextWateringOn`; negative means not yet due. */
+export function overdueDays(plant: Plant, today: LocalDate): number {
+  return daysBetween(nextWateringOn(plant), today);
+}
+
+/** The PRD's 待澆: on or after `nextWateringOn`. */
+export function isDue(plant: Plant, today: LocalDate): boolean {
+  return overdueDays(plant, today) >= 0;
 }
